@@ -1,0 +1,6 @@
+{
+  "name": "Senda",
+  "description": "Control de gastos personal sin conexión con reportes avanzados, exportación PDF/Excel, biometría y sincronización en la nube cifrada.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
