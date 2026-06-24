@@ -16,9 +16,19 @@ import com.example.data.TransactionRepository
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import org.json.JSONObject
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
+
+sealed class ExchangeRateState {
+    object Loading : ExchangeRateState()
+    data class Success(val rateBuy: Double, val rateSell: Double, val lastUpdated: String) : ExchangeRateState()
+    data class Error(val message: String) : ExchangeRateState()
+}
 
 class AppViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -121,8 +131,50 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val _reminders = MutableStateFlow<List<PaymentReminder>>(loadMockReminders())
     val reminders = _reminders.asStateFlow()
 
+    // Exchange rate status
+    private val _exchangeRateState = MutableStateFlow<ExchangeRateState>(ExchangeRateState.Loading)
+    val exchangeRateState = _exchangeRateState.asStateFlow()
+
+    fun fetchExchangeRate() {
+        viewModelScope.launch(Dispatchers.IO) {
+            _exchangeRateState.value = ExchangeRateState.Loading
+            try {
+                val client = OkHttpClient()
+                val request = Request.Builder()
+                    .url("https://open.er-api.com/v6/latest/USD")
+                    .build()
+                client.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) {
+                        _exchangeRateState.value = ExchangeRateState.Error("Error: ${response.code}")
+                        return@launch
+                    }
+                    val bodyString = response.body?.string() ?: throw Exception("Cuerpo vacío")
+                    val json = JSONObject(bodyString)
+                    val rates = json.getJSONObject("rates")
+                    val penRate = rates.getDouble("PEN")
+                    
+                    // Realistic Compra and Venta for Peru
+                    val buyRate = penRate - 0.015
+                    val sellRate = penRate + 0.015
+                    
+                    val sdf = SimpleDateFormat("HH:mm", Locale.getDefault())
+                    val timeString = sdf.format(Date())
+                    
+                    _exchangeRateState.value = ExchangeRateState.Success(
+                        rateBuy = buyRate,
+                        rateSell = sellRate,
+                        lastUpdated = timeString
+                    )
+                }
+            } catch (e: Exception) {
+                _exchangeRateState.value = ExchangeRateState.Error("Fallo al conectar")
+            }
+        }
+    }
+
     init {
         updateUnsyncedCount()
+        fetchExchangeRate()
     }
 
     fun updateUnsyncedCount() {

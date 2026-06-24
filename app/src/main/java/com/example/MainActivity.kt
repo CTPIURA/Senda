@@ -37,6 +37,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -51,6 +55,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.TransactionEntity
 import com.example.ui.AppViewModel
 import com.example.ui.PaymentReminder
+import com.example.ui.ExchangeRateState
 import com.example.ui.theme.MyApplicationTheme
 import com.example.ui.theme.Rose500
 import com.example.ui.theme.Emerald500
@@ -653,6 +658,26 @@ fun DashboardTab(
 
     val df = DecimalFormat("#,##0.00 PEN")
 
+    val userEmail by viewModel.userAccountEmail.collectAsStateWithLifecycle()
+    val remindersList by viewModel.reminders.collectAsStateWithLifecycle()
+
+    val userDisplayName = remember(userEmail) {
+        val index = userEmail.indexOf('@')
+        if (index > 0) {
+            userEmail.substring(0, index).replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() }
+        } else {
+            userEmail.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() }
+        }
+    }
+
+    val spentPercentage = remember(totalIncomes, totalExpenses) {
+        if (totalIncomes > 0) {
+            (totalExpenses / totalIncomes).toFloat()
+        } else {
+            0f
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -660,6 +685,99 @@ fun DashboardTab(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        // 0. User Welcome Header Card with Profile Info
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .shadow(2.dp, shape = RoundedCornerShape(20.dp)),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surface
+            ),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.1f))
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Stylish Gradient Avatar
+                Box(
+                    modifier = Modifier
+                        .size(54.dp)
+                        .clip(CircleShape)
+                        .background(
+                            Brush.linearGradient(
+                                colors = listOf(
+                                    MaterialTheme.colorScheme.primary,
+                                    MaterialTheme.colorScheme.secondary
+                                )
+                            )
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = userDisplayName.take(1).uppercase(Locale.getDefault()),
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Black,
+                        color = MaterialTheme.colorScheme.onPrimary
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(16.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "¡Hola, $userDisplayName!",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    
+                    val currentDateStr = remember {
+                        val sdf = SimpleDateFormat("EEEE, d 'de' MMMM", Locale("es", "PE"))
+                        sdf.format(Date()).replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale("es", "PE")) else it.toString() }
+                    }
+                    Text(
+                        text = currentDateStr,
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+                
+                // Quick Security Status Badge
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f),
+                    modifier = Modifier.padding(start = 4.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.VerifiedUser,
+                            contentDescription = "Protegido",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "Seguro",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            }
+        }
+
+        // Real-time US Dollar Exchange Rate Card
+        ExchangeRateCard(viewModel = viewModel)
+
         // Balance Card
         Card(
             modifier = Modifier
@@ -755,6 +873,196 @@ fun DashboardTab(
                             fontWeight = FontWeight.Bold,
                             color = Rose500
                         )
+                    }
+                }
+            }
+        }
+
+        // 1. Financial Health Indicator Card
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .shadow(2.dp, shape = RoundedCornerShape(20.dp)),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surface
+            ),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.1f))
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "ÍNDICE DE SALUD FINANCIERA",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.5.sp,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                    )
+                    
+                    val statusText = when {
+                        totalIncomes == 0.0 && totalExpenses == 0.0 -> "Sin datos"
+                        spentPercentage > 0.8f || currentBalance < 0 -> "Crítico"
+                        spentPercentage > 0.5f -> "Moderado"
+                        else -> "Excelente"
+                    }
+                    
+                    val statusColor = when {
+                        totalIncomes == 0.0 && totalExpenses == 0.0 -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                        spentPercentage > 0.8f || currentBalance < 0 -> Rose500
+                        spentPercentage > 0.5f -> Amber500
+                        else -> Emerald500
+                    }
+                    
+                    Text(
+                        text = statusText,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Black,
+                        color = statusColor,
+                        modifier = Modifier
+                            .background(statusColor.copy(alpha = 0.1f), RoundedCornerShape(8.dp))
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Progress bar indicating expenditure ratio
+                val animatedProgress by animateFloatAsState(
+                    targetValue = spentPercentage.coerceIn(0f, 1f),
+                    animationSpec = tween(1000)
+                )
+
+                LinearProgressIndicator(
+                    progress = { animatedProgress },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(8.dp)
+                        .clip(RoundedCornerShape(4.dp)),
+                    color = when {
+                        spentPercentage > 0.8f || currentBalance < 0 -> Rose500
+                        spentPercentage > 0.5f -> Amber500
+                        else -> Emerald500
+                    },
+                    trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                val adviceText = when {
+                    totalIncomes == 0.0 && totalExpenses == 0.0 -> {
+                        "Comienza añadiendo tus ingresos y gastos para calcular de forma inteligente tu nivel de ahorro mensual."
+                    }
+                    currentBalance < 0 -> {
+                        "⚠️ Alerta: Tus gastos superan tus ingresos este mes. Te recomendamos recortar suscripciones o compras secundarias de inmediato."
+                    }
+                    spentPercentage > 0.8f -> {
+                        "⚠️ Advertencia: Has consumido el ${(spentPercentage * 100).toInt()}% de tus ingresos en gastos. Queda poco margen para imprevistos."
+                    }
+                    spentPercentage > 0.5f -> {
+                        "⚖️ Balance Moderado: Has gastado un ${(spentPercentage * 100).toInt()}% de tus ingresos. Es un buen momento para priorizar el ahorro."
+                    }
+                    else -> {
+                        "✨ ¡Felicitaciones! Estás ahorrando más de la mitad de tus ingresos. Tu senda financiera se encuentra muy sólida y protegida."
+                    }
+                }
+
+                Text(
+                    text = adviceText,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                    lineHeight = 16.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                )
+            }
+        }
+
+        // Dynamic Smart Savings Analysis & Tips Card
+        SavingsAnalysisSection(
+            txs = txs,
+            totalIncomes = totalIncomes,
+            totalExpenses = totalExpenses
+        )
+
+        // 2. Upcoming Payment Reminders Checklist (Quick Carousel)
+        if (remindersList.isNotEmpty()) {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = "RECORDATORIOS DE PAGO CLAVE",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.5.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+                
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(vertical = 4.dp)
+                ) {
+                    remindersList.forEach { reminder ->
+                        Card(
+                            modifier = Modifier
+                                .width(200.dp)
+                                .shadow(1.dp, shape = RoundedCornerShape(16.dp)),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.08f))
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(12.dp)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Event,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Text(
+                                        text = "Día ${reminder.dayOfMonth}",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier
+                                            .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f), RoundedCornerShape(6.dp))
+                                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = reminder.title,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = "PEN ${df.format(reminder.amount).replace(" PEN", "")}",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -1626,6 +1934,19 @@ fun ReportsTab(viewModel: AppViewModel) {
             }
         }
 
+        // Advanced Recharts-Style Interactive Analytics Dashboard
+        RechartsAnalyticsDashboard(txs = filteredList)
+
+        // Dynamic Smart Savings Analysis & Tips Card for the Selected Period
+        val periodIncomes = remember(filteredList) {
+            filteredList.filter { it.type == "INCOME" }.sumOf { it.amount }
+        }
+        SavingsAnalysisSection(
+            txs = filteredList,
+            totalIncomes = periodIncomes,
+            totalExpenses = totalSpending
+        )
+
         // TAB 2: Payment reminders checklist
         Card(
             modifier = Modifier.fillMaxWidth(),
@@ -2143,3 +2464,1201 @@ fun SettingsTab(viewModel: AppViewModel) {
         )
     }
 }
+
+// 9. DYNAMIC SAVINGS ADVISOR & ANALYTICS COMPONENT
+data class AdviceInfo(
+    val title: String,
+    val desc: String,
+    val icon: ImageVector,
+    val color: Color
+)
+
+@Composable
+fun SavingsAnalysisSection(
+    txs: List<TransactionEntity>,
+    totalIncomes: Double,
+    totalExpenses: Double
+) {
+    val df = DecimalFormat("#,##0.00")
+    
+    // Math Analysis
+    val balance = totalIncomes - totalExpenses
+    val savingsRate = if (totalIncomes > 0) ((totalIncomes - totalExpenses) / totalIncomes) * 100.0 else 0.0
+    
+    // Find highest expense category
+    val expenseTxs = txs.filter { it.type == "EXPENSE" }
+    val groupedExpenses = expenseTxs.groupBy { it.category }
+        .mapValues { it.value.sumOf { tx -> tx.amount } }
+    val highestExpenseCategory = groupedExpenses.maxByOrNull { it.value }?.key ?: "Ninguno"
+    val maxExpenseAmount = groupedExpenses.maxByOrNull { it.value }?.value ?: 0.0
+    
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .shadow(2.dp, shape = RoundedCornerShape(20.dp))
+            .testTag("savings_analysis_card"),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.1f))
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            // Section Title
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Savings,
+                        contentDescription = "Tips de Ahorro",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+                Column {
+                    Text(
+                        text = "ANÁLISIS Y CONSEJOS DE AHORRO",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.2.sp,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        text = "Sugerencias inteligentes basadas en tus hábitos",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            }
+
+            // Savings Rate Progress / Score
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(
+                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.03f),
+                        RoundedCornerShape(16.dp)
+                    )
+                    .padding(16.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1.5f)) {
+                        Text(
+                            text = "Tu Tasa de Ahorro",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                        )
+                        val rateFormatted = if (savingsRate < 0.0) "0.0%" else String.format(Locale.getDefault(), "%.1f%%", savingsRate)
+                        Text(
+                            text = rateFormatted,
+                            fontSize = 28.sp,
+                            fontWeight = FontWeight.Black,
+                            color = when {
+                                savingsRate >= 30.0 -> Emerald500
+                                savingsRate >= 10.0 -> MaterialTheme.colorScheme.primary
+                                else -> Rose500
+                            }
+                        )
+                        Text(
+                            text = when {
+                                totalIncomes == 0.0 -> "Sin ingresos registrados"
+                                savingsRate >= 30.0 -> "¡Nivel de ahorro sobresaliente!"
+                                savingsRate >= 10.0 -> "Ahorro saludable. Sigue así."
+                                savingsRate > 0.0 -> "Ahorro bajo. Necesitas optimizar."
+                                else -> "Tus gastos superan tus ingresos."
+                            },
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                        )
+                    }
+
+                    // Circular indicator
+                    Box(
+                        modifier = Modifier.size(70.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(
+                            progress = { (savingsRate.coerceIn(0.0, 100.0) / 100.0).toFloat() },
+                            modifier = Modifier.size(64.dp),
+                            color = when {
+                                savingsRate >= 30.0 -> Emerald500
+                                savingsRate >= 10.0 -> MaterialTheme.colorScheme.primary
+                                else -> Rose500
+                            },
+                            strokeWidth = 6.dp,
+                            trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
+                        )
+                        Icon(
+                            imageVector = when {
+                                savingsRate >= 30.0 -> Icons.Default.TrendingUp
+                                savingsRate >= 10.0 -> Icons.Default.VerifiedUser
+                                else -> Icons.Default.Warning
+                            },
+                            contentDescription = null,
+                            tint = when {
+                                savingsRate >= 30.0 -> Emerald500
+                                savingsRate >= 10.0 -> MaterialTheme.colorScheme.primary
+                                else -> Rose500
+                            },
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                }
+            }
+
+            // Dynamic Actionable Tip Cards
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                // Tip 1: Overall Savings Recommendation
+                val tip1 = when {
+                    totalIncomes == 0.0 -> AdviceInfo(
+                        "Registra tus primeros ingresos",
+                        "Para poder ofrecerte un análisis exacto de tus hábitos de ahorro, necesitamos que registres tus fuentes de ingresos fijos o de ventas.",
+                        Icons.Default.Payments,
+                        MaterialTheme.colorScheme.primary
+                    )
+                    savingsRate < 10.0 -> AdviceInfo(
+                        "Regla de Oro: Págate a ti primero",
+                        "Separa al menos el 10% de tus ingresos (PEN ${df.format(totalIncomes * 0.10)}) apenas los recibas. Colócalos en una cuenta separada antes de empezar a gastar para asegurar tu ahorro.",
+                        Icons.Default.Savings,
+                        Rose500
+                    )
+                    savingsRate in 10.0..30.0 -> AdviceInfo(
+                        "Consolida tu Reserva Financiera",
+                        "Tu excedente de ahorro actual es de PEN ${df.format(balance)}. Te recomendamos destinarlo a construir tu Fondo de Emergencia hasta cubrir 3 meses de tus gastos fijos (PEN ${df.format(totalExpenses * 3.0)}) para proteger tu tranquilidad.",
+                        Icons.Default.VerifiedUser,
+                        MaterialTheme.colorScheme.primary
+                    )
+                    else -> AdviceInfo(
+                        "Haz trabajar tu dinero ahorrado",
+                        "Estás ahorrando un excelente ${savingsRate.toInt()}% de tus ingresos (PEN ${df.format(balance)}). Considera colocar una parte de tus ahorros en depósitos a plazo fijo o fondos mutuos de bajo riesgo para ganarle a la inflación.",
+                        Icons.Default.TrendingUp,
+                        Emerald500
+                    )
+                }
+
+                AdviceCard(title = tip1.title, desc = tip1.desc, icon = tip1.icon, color = tip1.color)
+
+                // Tip 2: Category Spending Reduction Recommendation
+                if (highestExpenseCategory != "Ninguno" && maxExpenseAmount > 0) {
+                    val tip2 = when (highestExpenseCategory) {
+                        "Comida" -> AdviceInfo(
+                            "Optimización en 'Comida' (PEN ${df.format(maxExpenseAmount)})",
+                            "Es tu mayor gasto este mes. Para ahorrar, planifica tus comidas semanales (meal prep), haz una lista estricta antes de ir al supermercado y reduce las salidas a restaurantes.",
+                            Icons.Default.Restaurant,
+                            Amber500
+                        )
+                        "Ocio" -> AdviceInfo(
+                            "Ajuste en Ocio y Entretenimiento (PEN ${df.format(maxExpenseAmount)})",
+                            "Has gastado una suma considerable en diversión. Intenta establecer un límite semanal estricto para salidas, y revisa si tienes suscripciones mensuales que no uses.",
+                            Icons.Default.LocalPlay,
+                            Amber500
+                        )
+                        "Hogar" -> AdviceInfo(
+                            "Control de Consumos en Hogar (PEN ${df.format(maxExpenseAmount)})",
+                            "Los egresos del hogar representan una gran parte de tus gastos. Desenchufa electrodomésticos en standby, optimiza el uso de agua/luz y evalúa compras de insumos al por mayor.",
+                            Icons.Default.Home,
+                            Amber500
+                        )
+                        "Transporte" -> AdviceInfo(
+                            "Eficiencia en Movilidad (PEN ${df.format(maxExpenseAmount)})",
+                            "El gasto de traslado es alto. Consolida tus diligencias en un solo viaje, prefiere el transporte público o comparte trayecto con conocidos para ahorrar combustible.",
+                            Icons.Default.DirectionsCar,
+                            Amber500
+                        )
+                        else -> AdviceInfo(
+                            "Atención al gasto en '$highestExpenseCategory' (PEN ${df.format(maxExpenseAmount)})",
+                            "Esta categoría representa tu principal egreso. Revisa detalladamente cada transacción de este rubro e identifica cuáles de ellas puedes suprimir el próximo mes.",
+                            Icons.Default.Label,
+                            Amber500
+                        )
+                    }
+                    AdviceCard(title = tip2.title, desc = tip2.desc, icon = tip2.icon, color = tip2.color)
+                } else {
+                    AdviceCard(
+                        title = "La Regla de los Gastos Hormiga",
+                        desc = "Pequeños consumos diarios de bajo costo (cafés, snacks, taxis cortos) pueden representar silenciosamente hasta el 15% de tus egresos mensuales sin que te des cuenta.",
+                        icon = Icons.Default.Label,
+                        color = Amber500
+                    )
+                }
+
+                // Tip 3: Proactive Savings Goal Estimator (Interactivo / Educativo)
+                if (balance > 0.0) {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.12f), modifier = Modifier.padding(vertical = 4.dp))
+                    
+                    Text(
+                        text = "PROYECCIÓN DE AHORRO ESTIMADA",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.2.sp,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                    
+                    Text(
+                        text = "Si mantienes este ritmo de ahorro mensual de PEN ${df.format(balance)}, acumularás:",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                    )
+                    
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        listOf(
+                            Triple("En 3 Meses", balance * 3, MaterialTheme.colorScheme.primaryContainer),
+                            Triple("En 6 Meses", balance * 6, MaterialTheme.colorScheme.secondaryContainer),
+                            Triple("En 1 Año", balance * 12, MaterialTheme.colorScheme.tertiaryContainer)
+                        ).forEach { (time, projection, bgColor) ->
+                            Card(
+                                modifier = Modifier.weight(1f),
+                                colors = CardDefaults.cardColors(containerColor = bgColor.copy(alpha = 0.35f)),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(10.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Text(text = time, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = "PEN ${df.format(projection).take(8)}",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun AdviceCard(
+    title: String,
+    desc: String,
+    icon: ImageVector,
+    color: Color
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(color.copy(alpha = 0.05f))
+            .border(1.dp, color.copy(alpha = 0.12f), RoundedCornerShape(14.dp))
+            .padding(12.dp),
+        verticalAlignment = Alignment.Top
+    ) {
+        Box(
+            modifier = Modifier
+                .size(34.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(color.copy(alpha = 0.15f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = color,
+                modifier = Modifier.size(18.dp)
+            )
+        }
+        Spacer(modifier = Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = desc,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Medium,
+                lineHeight = 15.sp,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+            )
+        }
+    }
+}
+
+// 10. REAL-TIME US DOLLAR EXCHANGE RATE WIDGET
+@Composable
+fun ExchangeRateCard(viewModel: AppViewModel) {
+    val exchangeRateState by viewModel.exchangeRateState.collectAsStateWithLifecycle()
+    
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .shadow(2.dp, shape = RoundedCornerShape(20.dp))
+            .testTag("exchange_rate_card"),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        ),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.1f))
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            // Header
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.AttachMoney,
+                            contentDescription = "USD",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    Column {
+                        Text(
+                            text = "TIPO DE CAMBIO USD/PEN",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 1.2.sp,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Text(
+                            text = "Dólar en Tiempo Real",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+
+                // Refresh Button
+                IconButton(
+                    onClick = { viewModel.fetchExchangeRate() },
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = "Actualizar tipo de cambio",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            when (val state = exchangeRateState) {
+                is ExchangeRateState.Loading -> {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 8.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Consultando mercado cambiario...",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                        )
+                    }
+                }
+                is ExchangeRateState.Success -> {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        // Compra (Buy) Card
+                        Card(
+                            modifier = Modifier.weight(1f),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f)
+                            ),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(10.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(
+                                    text = "COMPRA",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = String.format(Locale.getDefault(), "S/ %.3f", state.rateBuy),
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+
+                        // Venta (Sell) Card
+                        Card(
+                            modifier = Modifier.weight(1f),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.15f)
+                            ),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(10.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(
+                                    text = "VENTA",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.secondary
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = String.format(Locale.getDefault(), "S/ %.3f", state.rateSell),
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Fuente de datos: ER-API (Interbancario)",
+                            fontSize = 10.sp,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
+                        )
+                        Text(
+                            text = "Act: ${state.lastUpdated}",
+                            fontSize = 10.sp,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+                is ExchangeRateState.Error -> {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(
+                                MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.2f),
+                                RoundedCornerShape(12.dp)
+                            )
+                            .border(
+                                1.dp,
+                                MaterialTheme.colorScheme.error.copy(alpha = 0.15f),
+                                RoundedCornerShape(12.dp)
+                            )
+                            .padding(10.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Warning,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Error de red. Mostrando estimado: S/ 3.750",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
+                        
+                        TextButton(
+                            onClick = { viewModel.fetchExchangeRate() },
+                            contentPadding = PaddingValues(0.dp),
+                            modifier = Modifier.height(24.dp)
+                        ) {
+                            Text(
+                                text = "Reintentar",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// 11. RECHARTS-INSPIRED INTERACTIVE ANALYTICS & SAVINGS EVOLUTION DASHBOARD
+data class SavingsPoint(
+    val index: Int,
+    val dateLabel: String,
+    val dateMillis: Long,
+    val balance: Double,
+    val totalIncome: Double,
+    val totalExpense: Double
+)
+
+@Composable
+fun RechartsAnalyticsDashboard(
+    txs: List<TransactionEntity>,
+    modifier: Modifier = Modifier
+) {
+    var selectedTab by remember { mutableStateOf(0) } // 0: Evolución, 1: Categorías
+    val df = DecimalFormat("#,##0.00")
+
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .shadow(4.dp, shape = RoundedCornerShape(24.dp))
+            .testTag("recharts_dashboard_card"),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.08f))
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            // Header Section
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        text = "ANÁLISIS GRÁFICO AVANZADO",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.2.sp,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        text = "Tendencias y Métricas Recharts",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Black,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+                
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Timeline,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+
+            // Custom Segmented Control (Pills Layout)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.04f))
+                    .padding(4.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                listOf("Evolución del Ahorro", "Distribución de Gastos").forEachIndexed { idx, label ->
+                    val isSelected = selectedTab == idx
+                    val bgSelected = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent
+                    val textSelected = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                    
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(bgSelected)
+                            .clickable { selectedTab = idx }
+                            .padding(vertical = 8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = label,
+                            fontSize = 12.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                            color = textSelected
+                        )
+                    }
+                }
+            }
+
+            if (txs.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(200.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            imageVector = Icons.Default.BarChart,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f),
+                            modifier = Modifier.size(48.dp)
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Inserta transacciones para ver gráficos",
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                        )
+                    }
+                }
+            } else {
+                AnimatedContent(
+                    targetState = selectedTab,
+                    transitionSpec = {
+                        fadeIn(animationSpec = tween(300)) togetherWith fadeOut(animationSpec = tween(300))
+                    },
+                    label = "TabContent"
+                ) { tab ->
+                    when (tab) {
+                        0 -> SavingsEvolutionChart(txs = txs)
+                        1 -> CategoryBarChart(txs = txs)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun SavingsEvolutionChart(txs: List<TransactionEntity>) {
+    val df = DecimalFormat("#,##0.00")
+    
+    // Process savings data points chronologically
+    val displayPoints = remember(txs) {
+        val sortedTxs = txs.filter { !it.isDeletedLocally }.sortedBy { it.dateMillis }
+        var currentBalance = 0.0
+        var totalIncome = 0.0
+        var totalExpense = 0.0
+        val points = mutableListOf<SavingsPoint>()
+        val sdf = SimpleDateFormat("dd/MM", Locale.getDefault())
+
+        sortedTxs.forEachIndexed { index, tx ->
+            if (tx.type == "INCOME") {
+                currentBalance += tx.amount
+                totalIncome += tx.amount
+            } else {
+                currentBalance -= tx.amount
+                totalExpense += tx.amount
+            }
+            points.add(
+                SavingsPoint(
+                    index = index,
+                    dateLabel = sdf.format(Date(tx.dateMillis)),
+                    dateMillis = tx.dateMillis,
+                    balance = currentBalance,
+                    totalIncome = totalIncome,
+                    totalExpense = totalExpense
+                )
+            )
+        }
+
+        // Downsample to max 10 points for readable rendering
+        val maxPoints = 10
+        if (points.size <= maxPoints) {
+            points
+        } else {
+            val step = (points.size - 1).toDouble() / (maxPoints - 1)
+            val downsampled = mutableListOf<SavingsPoint>()
+            for (i in 0 until maxPoints) {
+                val idx = (i * step).toInt().coerceIn(0, points.size - 1)
+                downsampled.add(points[idx])
+            }
+            downsampled
+        }
+    }
+
+    if (displayPoints.isEmpty()) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(200.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text("Inserta ingresos/egresos para graficar la evolución", fontSize = 12.sp)
+        }
+        return
+    }
+
+    var selectedIndex by remember(displayPoints) { mutableStateOf(displayPoints.size - 1) }
+    val currentSelectedPoint = displayPoints.getOrNull(selectedIndex) ?: displayPoints.last()
+
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        // Quick Tooltip Banner Info (Recharts inspired interactive indicator)
+        Card(
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f)),
+            shape = RoundedCornerShape(16.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(14.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        text = "DETALLE DE PUNTO SELECCIONADO (${currentSelectedPoint.dateLabel})",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        text = "Balance: S/ ${df.format(currentSelectedPoint.balance)}",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Black,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text(text = "Ingresos", fontSize = 9.sp, color = Emerald500, fontWeight = FontWeight.Bold)
+                        Text(text = "S/ ${df.format(currentSelectedPoint.totalIncome).take(8)}", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text(text = "Gastos", fontSize = 9.sp, color = Rose500, fontWeight = FontWeight.Bold)
+                        Text(text = "S/ ${df.format(currentSelectedPoint.totalExpense).take(8)}", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            }
+        }
+
+        // Chart Area Wrapper
+        BoxWithConstraints(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(200.dp)
+                .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.01f), RoundedCornerShape(12.dp))
+                .border(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.03f), RoundedCornerShape(12.dp))
+                .padding(bottom = 12.dp)
+        ) {
+            val width = constraints.maxWidth.toFloat()
+            val height = constraints.maxHeight.toFloat() - 40f // leave space for X labels
+
+            val balances = displayPoints.map { it.balance }
+            val maxVal = balances.maxOrNull() ?: 100.0
+            val minVal = balances.minOrNull() ?: 0.0
+            val pad = ((maxVal - minVal).coerceAtLeast(100.0) * 0.15).toFloat()
+            val yMax = (maxVal + pad).toFloat()
+            val yMin = (minVal - pad).toFloat()
+
+            // Touch mapping calculations
+            val xStep = width / (displayPoints.size - 1).coerceAtLeast(1)
+
+            val primaryColor = MaterialTheme.colorScheme.primary
+            val outlineColor = MaterialTheme.colorScheme.outline
+
+            // Interaction detection modifier
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .pointerInput(displayPoints) {
+                        detectTapGestures { offset ->
+                            val index = kotlin.math.round(offset.x / xStep)
+                                .toInt()
+                                .coerceIn(0, displayPoints.size - 1)
+                            selectedIndex = index
+                        }
+                    }
+                    .pointerInput(displayPoints) {
+                        detectDragGestures { change, _ ->
+                            change.consume()
+                            val index = kotlin.math.round(change.position.x / xStep)
+                                .toInt()
+                                .coerceIn(0, displayPoints.size - 1)
+                            selectedIndex = index
+                        }
+                    }
+            ) {
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    // 1. Cartesian Gridlines (Recharts signature look)
+                    val gridLines = 4
+                    for (i in 0..gridLines) {
+                        val y = (height / gridLines) * i
+                        drawLine(
+                            color = outlineColor.copy(alpha = 0.08f),
+                            start = Offset(0f, y),
+                            end = Offset(width, y),
+                            strokeWidth = 1.dp.toPx()
+                        )
+                    }
+
+                    // 2. Draw Area Path (gradient)
+                    if (displayPoints.size > 1) {
+                        val areaPath = Path().apply {
+                            moveTo(0f, height)
+                            displayPoints.forEachIndexed { idx, pt ->
+                                val x = idx * xStep
+                                val y = height - ((pt.balance - yMin) / (yMax - yMin) * height)
+                                lineTo(x, y.toFloat())
+                            }
+                            lineTo(width, height)
+                            close()
+                        }
+
+                        drawPath(
+                            path = areaPath,
+                            brush = Brush.verticalGradient(
+                                colors = listOf(
+                                    primaryColor.copy(alpha = 0.35f),
+                                    primaryColor.copy(alpha = 0.0f)
+                                ),
+                                startY = 0f,
+                                endY = height
+                            )
+                        )
+
+                        // 3. Draw Stroke Path
+                        val strokePath = Path().apply {
+                            displayPoints.forEachIndexed { idx, pt ->
+                                val x = idx * xStep
+                                val y = height - ((pt.balance - yMin) / (yMax - yMin) * height)
+                                if (idx == 0) moveTo(x, y.toFloat()) else lineTo(x, y.toFloat())
+                            }
+                        }
+
+                        drawPath(
+                            path = strokePath,
+                            color = primaryColor,
+                            style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round)
+                        )
+                    }
+
+                    // 4. Draw Selected Point Indicator (Vertical line & dot)
+                    val selectX = selectedIndex * xStep
+                    val selectY = height - ((currentSelectedPoint.balance - yMin) / (yMax - yMin) * height).toFloat()
+
+                    drawLine(
+                        color = primaryColor.copy(alpha = 0.4f),
+                        start = Offset(selectX, 0f),
+                        end = Offset(selectX, height),
+                        strokeWidth = 1.5.dp.toPx()
+                    )
+
+                    // Glow background circle
+                    drawCircle(
+                        color = primaryColor.copy(alpha = 0.2f),
+                        radius = 12.dp.toPx(),
+                        center = Offset(selectX, selectY)
+                    )
+
+                    // Core point circle
+                    drawCircle(
+                        color = Color.White,
+                        radius = 6.dp.toPx(),
+                        center = Offset(selectX, selectY)
+                    )
+                    drawCircle(
+                        color = primaryColor,
+                        radius = 4.dp.toPx(),
+                        center = Offset(selectX, selectY)
+                    )
+                }
+            }
+        }
+
+        // X Axis labels (Dates representation)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 4.dp),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            displayPoints.forEachIndexed { idx, pt ->
+                val isSelected = idx == selectedIndex
+                Text(
+                    text = pt.dateLabel,
+                    fontSize = 10.sp,
+                    fontWeight = if (isSelected) FontWeight.Black else FontWeight.Bold,
+                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
+                )
+            }
+        }
+
+        // Touch suggestion tooltip
+        Text(
+            text = "💡 Desliza tu dedo o presiona sobre el gráfico para auditar el historial de tu ahorro.",
+            fontSize = 11.sp,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+            fontWeight = FontWeight.Medium,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
+        )
+    }
+}
+
+@Composable
+fun CategoryBarChart(txs: List<TransactionEntity>) {
+    val df = DecimalFormat("#,##0.00")
+    val expenseTxs = remember(txs) { txs.filter { it.type == "EXPENSE" && !it.isDeletedLocally } }
+
+    val categorySummary = remember(expenseTxs) {
+        val totalSpending = expenseTxs.sumOf { it.amount }
+        expenseTxs.groupBy { it.category }
+            .mapValues { entry ->
+                val sum = entry.value.sumOf { it.amount }
+                val pct = if (totalSpending > 0) (sum / totalSpending) * 100.0 else 0.0
+                Pair(sum, pct)
+            }
+            .toList()
+            .sortedByDescending { it.second.first }
+    }
+
+    if (categorySummary.isEmpty()) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(200.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text("Registra egresos por categorías para visualizar la distribución.", fontSize = 12.sp)
+        }
+        return
+    }
+
+    var selectedIndex by remember(categorySummary) { mutableStateOf(0) }
+    val selectedItem = categorySummary.getOrNull(selectedIndex) ?: categorySummary.first()
+
+    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        // Detailed indicator
+        Card(
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.15f)),
+            shape = RoundedCornerShape(16.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(14.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(12.dp)
+                            .clip(CircleShape)
+                            .background(getCategoryColor(selectedItem.first))
+                    )
+                    Column {
+                        Text(
+                            text = "CATEGORÍA DEL GASTO",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.secondary
+                        )
+                        Text(
+                            text = selectedItem.first.uppercase(),
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Black,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(
+                        text = "Total: S/ ${df.format(selectedItem.second.first)}",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Black,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = String.format(Locale.getDefault(), "Porcentaje: %.1f%%", selectedItem.second.second),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                    )
+                }
+            }
+        }
+
+        // Recharts-inspired Custom Vertical Column bar graphics
+        BoxWithConstraints(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(180.dp)
+                .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.01f), RoundedCornerShape(12.dp))
+                .border(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.03f), RoundedCornerShape(12.dp))
+                .padding(12.dp)
+        ) {
+            val width = constraints.maxWidth.toFloat()
+            val height = constraints.maxHeight.toFloat()
+
+            val maxSum = categorySummary.maxOfOrNull { it.second.first } ?: 100.0
+            val barCount = categorySummary.size
+            val barSectionWidth = width / barCount
+            val barWidth = (barSectionWidth * 0.45f).coerceAtLeast(15f)
+
+            val onSurfaceColor = MaterialTheme.colorScheme.onSurface
+
+            var isAnimated by remember { mutableStateOf(false) }
+            LaunchedEffect(key1 = categorySummary) {
+                delay(100)
+                isAnimated = true
+            }
+
+            val progressAnimate by animateFloatAsState(
+                targetValue = if (isAnimated) 1f else 0f,
+                animationSpec = tween(durationMillis = 850)
+            )
+
+            // Canvas + Gesture Detector
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .pointerInput(categorySummary) {
+                        detectTapGestures { offset ->
+                            val index = (offset.x / barSectionWidth)
+                                .toInt()
+                                .coerceIn(0, barCount - 1)
+                            selectedIndex = index
+                        }
+                    }
+            ) {
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    // Background grid line (Recharts visual signature)
+                    drawLine(
+                        color = Color.LightGray.copy(alpha = 0.15f),
+                        start = Offset(0f, height * 0.5f),
+                        end = Offset(width, height * 0.5f),
+                        strokeWidth = 1.dp.toPx()
+                    )
+
+                    categorySummary.forEachIndexed { idx, (cat, pair) ->
+                        val sum = pair.first
+                        val barHeight = ((sum / maxSum) * (height - 30f)).toFloat() * progressAnimate
+                        val leftX = (idx * barSectionWidth) + (barSectionWidth - barWidth) / 2f
+                        val topY = height - barHeight - 15f
+
+                        // Draw selection highlights
+                        if (idx == selectedIndex) {
+                            drawRoundRect(
+                                color = onSurfaceColor.copy(alpha = 0.04f),
+                                topLeft = Offset(idx * barSectionWidth, 0f),
+                                size = Size(barSectionWidth, height),
+                                cornerRadius = androidx.compose.ui.geometry.CornerRadius(8.dp.toPx())
+                            )
+                        }
+
+                        // Main bar column
+                        drawRoundRect(
+                            color = getCategoryColor(cat),
+                            topLeft = Offset(leftX, topY),
+                            size = Size(barWidth, barHeight.coerceAtLeast(4f)),
+                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(6.dp.toPx(), 6.dp.toPx())
+                        )
+
+                        // Base guideline
+                        drawLine(
+                            color = onSurfaceColor.copy(alpha = 0.15f),
+                            start = Offset(0f, height - 15f),
+                            end = Offset(width, height - 15f),
+                            strokeWidth = 1.5.dp.toPx()
+                        )
+                    }
+                }
+            }
+        }
+
+        // Text Labels below bars
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceAround
+        ) {
+            categorySummary.forEachIndexed { idx, (cat, _) ->
+                val isSelected = idx == selectedIndex
+                Text(
+                    text = cat.take(4).uppercase(),
+                    fontSize = 10.sp,
+                    fontWeight = if (isSelected) FontWeight.Black else FontWeight.Bold,
+                    color = if (isSelected) getCategoryColor(cat) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
+                    modifier = Modifier.width(36.dp),
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+
+
